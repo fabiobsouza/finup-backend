@@ -5,7 +5,9 @@ import com.finup.user.User;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 
 @Entity
 @Table(name = "assets", schema = "finup")
@@ -37,6 +39,17 @@ public class Asset {
     @Column(length = 150)
     private String institution;
 
+    /**
+     * Primeiro mês (sempre dia 1) em que o ativo deixa de existir.
+     * Nulo = ativo vigente.
+     */
+    @Column(name = "liquidated_at")
+    private LocalDate liquidatedAt;
+
+    /**
+     * Coluna legada. Espelha {@code liquidatedAt == null} apenas para permitir
+     * rollback do backend; não deve ser lida. Remover junto com a coluna (V7).
+     */
     @Column(nullable = false)
     @Builder.Default
     private Boolean active = true;
@@ -53,8 +66,23 @@ public class Asset {
     @Builder.Default
     private LocalDateTime updatedAt = LocalDateTime.now();
 
+    @PrePersist
+    protected void onCreate() {
+        this.active = liquidatedAt == null;
+    }
+
     @PreUpdate
     protected void onUpdate() {
         this.updatedAt = LocalDateTime.now();
+        this.active = liquidatedAt == null;
+    }
+
+    public boolean isLiquidated() {
+        return liquidatedAt != null;
+    }
+
+    /** Ativo liquidado não aceita lançamentos do mês de liquidação em diante. */
+    public boolean acceptsEntriesIn(YearMonth period) {
+        return liquidatedAt == null || period.isBefore(YearMonth.from(liquidatedAt));
     }
 }

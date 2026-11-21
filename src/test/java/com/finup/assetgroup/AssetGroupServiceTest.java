@@ -1,6 +1,5 @@
 package com.finup.assetgroup;
 
-import com.finup.asset.Asset;
 import com.finup.asset.AssetRepository;
 import com.finup.user.User;
 import org.junit.jupiter.api.Test;
@@ -8,6 +7,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
@@ -30,24 +30,23 @@ class AssetGroupServiceTest {
     private AssetRepository assetRepository;
 
     @Test
-    void testListByUser() {
+    void testListByUser_CountsOnlyNotLiquidatedAssets() {
         User user = User.builder().id(1L).build();
-        AssetGroup group = AssetGroup.builder().id(10L).name("Group 1").build();
-        
-        Asset asset1 = Asset.builder().id(100L).active(true).build();
-        Asset asset2 = Asset.builder().id(101L).active(false).build();
+        AssetGroup group1 = AssetGroup.builder().id(10L).name("Group 1").build();
+        AssetGroup group2 = AssetGroup.builder().id(11L).name("Group 2").build();
 
         when(assetGroupRepository.findByUserOrderByDisplayOrderAscNameAsc(user))
-                .thenReturn(List.of(group));
-        
-        when(assetRepository.findByGroupAndUserOrderByDisplayOrderAscNameAsc(group, user))
-                .thenReturn(List.of(asset1, asset2));
+                .thenReturn(List.of(group1, group2));
+        // a query já exclui liquidados; group2 não tem nenhum ativo vigente
+        when(assetRepository.countNotLiquidatedByGroup(user))
+                .thenReturn(List.<Object[]>of(new Object[]{10L, 3L}));
 
         List<AssetGroupDto> result = assetGroupService.listByUser(user);
 
-        assertEquals(1, result.size());
+        assertEquals(2, result.size());
         assertEquals("Group 1", result.get(0).name());
-        assertEquals(1, result.get(0).assetCount()); // only 1 active
+        assertEquals(3, result.get(0).assetCount());
+        assertEquals(0, result.get(1).assetCount());
     }
 
     @Test
@@ -101,10 +100,27 @@ class AssetGroupServiceTest {
         AssetGroup existing = AssetGroup.builder().id(10L).build();
 
         when(assetGroupRepository.findByIdAndUser(10L, user)).thenReturn(Optional.of(existing));
+        when(assetRepository.countByGroup(existing)).thenReturn(0L);
 
         assetGroupService.delete(user, 10L);
 
         verify(assetGroupRepository).delete(existing);
+    }
+
+    @Test
+    void testDelete_RejectsWhenGroupHasAssets() {
+        User user = User.builder().id(1L).build();
+        AssetGroup existing = AssetGroup.builder().id(10L).build();
+
+        when(assetGroupRepository.findByIdAndUser(10L, user)).thenReturn(Optional.of(existing));
+        when(assetRepository.countByGroup(existing)).thenReturn(2L);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> assetGroupService.delete(user, 10L));
+
+        assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
+        assertTrue(ex.getReason().contains("2 ativos"));
+        verify(assetGroupRepository, never()).delete(any());
     }
 
     @Test

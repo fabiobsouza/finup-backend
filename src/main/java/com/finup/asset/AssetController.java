@@ -19,8 +19,8 @@ public class AssetController {
     @GetMapping
     public ResponseEntity<List<AssetDto>> list(
             @AuthenticationPrincipal User user,
-            @RequestParam(defaultValue = "true") boolean activeOnly) {
-        return ResponseEntity.ok(service.listByUser(user, activeOnly));
+            @RequestParam(defaultValue = "false") boolean includeLiquidated) {
+        return ResponseEntity.ok(service.listByUser(user, includeLiquidated));
     }
 
     @PostMapping
@@ -38,11 +38,27 @@ public class AssetController {
         return ResponseEntity.ok(service.update(user, id, req));
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deactivate(
+    @PostMapping("/{id}/liquidation")
+    public ResponseEntity<AssetDto> liquidate(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long id,
+            @Valid @RequestBody LiquidationRequest req) {
+        return ResponseEntity.ok(service.liquidate(user, id, req));
+    }
+
+    @DeleteMapping("/{id}/liquidation")
+    public ResponseEntity<AssetDto> undoLiquidation(
             @AuthenticationPrincipal User user,
             @PathVariable Long id) {
-        service.deactivate(user, id);
+        return ResponseEntity.ok(service.undoLiquidation(user, id));
+    }
+
+    /** Exclusão física; recusada (409) se o ativo tiver lançamentos. */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long id) {
+        service.delete(user, id);
         return ResponseEntity.noContent().build();
     }
 }

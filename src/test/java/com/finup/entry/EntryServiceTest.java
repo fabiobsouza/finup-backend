@@ -9,9 +9,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -103,5 +105,45 @@ class EntryServiceTest {
         when(assetRepository.findByIdAndUser(100L, user)).thenReturn(Optional.empty());
 
         assertThrows(ResponseStatusException.class, () -> entryService.saveBatch(user, req));
+    }
+
+    @Test
+    void testSaveBatch_AllowsMonthBeforeLiquidation() {
+        User user = User.builder().id(1L).build();
+        AssetGroup group = AssetGroup.builder().id(10L).name("Group").build();
+        Asset asset = Asset.builder().id(100L).name("Asset").group(group)
+                .liquidatedAt(LocalDate.of(2023, 11, 1)).build();
+
+        EntryBatchRequest req = new EntryBatchRequest((short) 2023, (short) 10,
+                List.of(new EntryBatchRequest.EntryItem(100L, BigDecimal.TEN, null)));
+
+        when(assetRepository.findByIdAndUser(100L, user)).thenReturn(Optional.of(asset));
+        when(entryRepository.findByAssetAndYearAndMonth(asset, (short) 2023, (short) 10)).thenReturn(Optional.empty());
+        when(entryRepository.save(any(MonthlyEntry.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<EntryDto> result = entryService.saveBatch(user, req);
+
+        assertEquals(1, result.size());
+    }
+
+    @Test
+    void testSaveBatch_RejectsLiquidationMonthAndLater() {
+        User user = User.builder().id(1L).build();
+        AssetGroup group = AssetGroup.builder().id(10L).name("Group").build();
+        Asset asset = Asset.builder().id(100L).name("CDI Itaú").group(group)
+                .liquidatedAt(LocalDate.of(2023, 10, 1)).build();
+
+        EntryBatchRequest req = new EntryBatchRequest((short) 2023, (short) 10,
+                List.of(new EntryBatchRequest.EntryItem(100L, BigDecimal.TEN, null)));
+
+        when(assetRepository.findByIdAndUser(100L, user)).thenReturn(Optional.of(asset));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> entryService.saveBatch(user, req));
+
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, ex.getStatusCode());
+        assertTrue(ex.getReason().contains("CDI Itaú"));
+        assertTrue(ex.getReason().contains("10/2023"));
+        verify(entryRepository, never()).save(any());
     }
 }

@@ -7,7 +7,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -18,13 +20,15 @@ public class AssetGroupService {
 
     @Transactional(readOnly = true)
     public List<AssetGroupDto> listByUser(User user) {
+        // Contagem de ativos não liquidados por grupo, em uma única consulta
+        Map<Long, Long> counts = new HashMap<>();
+        for (Object[] row : assetRepository.countNotLiquidatedByGroup(user)) {
+            counts.put((Long) row[0], (Long) row[1]);
+        }
         return repository.findByUserOrderByDisplayOrderAscNameAsc(user)
                 .stream()
-                .map(g -> {
-                    int count = assetRepository.findByGroupAndUserOrderByDisplayOrderAscNameAsc(g, user)
-                            .stream().filter(a -> Boolean.TRUE.equals(a.getActive())).mapToInt(a -> 1).sum();
-                    return AssetGroupDto.from(g, count);
-                }).toList();
+                .map(g -> AssetGroupDto.from(g, counts.getOrDefault(g.getId(), 0L).intValue()))
+                .toList();
     }
 
     @Transactional
@@ -50,6 +54,12 @@ public class AssetGroupService {
     public void delete(User user, Long id) {
         AssetGroup group = repository.findByIdAndUser(id, user)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Grupo não encontrado"));
+        long assets = assetRepository.countByGroup(group);
+        if (assets > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A categoria possui " + assets + (assets == 1 ? " ativo" : " ativos")
+                            + " (incluindo liquidados). Mova-os para outra categoria antes de excluir.");
+        }
         repository.delete(group);
     }
 }
