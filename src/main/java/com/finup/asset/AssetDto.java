@@ -1,5 +1,7 @@
 package com.finup.asset;
 
+import java.time.LocalDate;
+
 public record AssetDto(
         Long id,
         Long groupId,
@@ -7,7 +9,7 @@ public record AssetDto(
         String name,
         String institution,
         String description,
-        Boolean active,
+        LocalDate liquidatedAt,
         Integer displayOrder
 ) {
     public static AssetDto from(Asset a) {
@@ -18,7 +20,7 @@ public record AssetDto(
                 a.getName(),
                 a.getInstitution(),
                 a.getDescription(),
-                a.getActive(),
+                a.getLiquidatedAt(),
                 a.getDisplayOrder()
         );
     }

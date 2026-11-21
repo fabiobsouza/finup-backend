@@ -28,6 +28,11 @@ public interface MonthlyEntryRepository extends JpaRepository<MonthlyEntry, Long
 
     List<MonthlyEntry> findByAssetAndUserOrderByYearAscMonthAsc(Asset asset, User user);
 
+    boolean existsByAsset(Asset asset);
+
+    /** Lançamento mais recente do ativo. */
+    Optional<MonthlyEntry> findFirstByAssetOrderByYearDescMonthDesc(Asset asset);
+
     @Query("""
         SELECT e FROM MonthlyEntry e
         JOIN FETCH e.asset a
